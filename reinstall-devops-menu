@@ -1,0 +1,189 @@
+#! /bin/bash -norc
+set -u
+NAME=${0##*/};
+DIRE=${0%/*}; if [[ -z "${DIRE}" ]]; then DIRE="."; fi;
+              if [[ "${DIRE}" = "${NAME}" ]]; then DIRE="."; fi;
+DIRE="$(cd ${DIRE}; echo ${PWD})";
+TAB="	"; # must be a TAB not a run of spaces
+unset CDPATH; # because when bash (I love it!) is involved, CDPATH can hose up a subshell/make, etc.
+unset BASH_ENV;
+unset ENV;       # unset the ENV environmental variable so any
+                 # Korn shells below this line do not attempt to
+                 # source it. Ditto for BASH_ENV
+# the environment variable
+#    ECHO
+# is examined, if it is TRUE/YES/ON (case insensitve)
+# then turn on shell debugging
+case ${ECHO:-null} in
+     [Tt][Rr][Uu][Ee] ) set -x ;;
+     [Yy][Ee][Ss]     ) set -x ;;
+     [Oo][Nn]         ) set -x ;;
+esac
+
+
+let S=1 || true; # silent
+let Q=2 || true; # quiet
+let V=3 || true; # verbose
+
+let DEF_LOUD=${Q} || true; let LOUD=-1 || true;
+let DEF_CLEAN=${Q} || true; let CLEAN=-1 || true;
+
+
+USAGE="
+usage: ${NAME} [options]
+
+    --help    | -h  get this printout
+    --quiet   | -q  stdout squashed, stderr shown
+    --verbose | -v  stdout shown, stderr shown
+    --silent  | -s  stdout squashed, stderr squashed
+    --clean   | -c  clean up (rm -rf) the build and dist
+                    directories after successful install
+    --dirty   | -d  don't clean up
+    
+    Exit status of this script tells the story.
+    If any build process exits NON-zero this script exits
+    with that value (if uninstall fails it is ignored if
+    this is the first install).
+
+    This script will uninstall and then install devops-menu
+    working from directory:
+        \"${DIRE}\"
+
+    You must be root to run the script
+       sudo ${NAME} 
+    might not work
+";
+
+# create a suite of temp files and then functions to clean them up
+TDIR=${TMPDIR:-/tmp}; # why examine TMPDIR? see tmpnam(3), but DO NOT export TDIR
+T0=${TDIR}/${NAME}-$$-0;
+T1=${TDIR}/${NAME}-$$-1;
+T2=${TDIR}/${NAME}-$$-2;
+T3=${TDIR}/${NAME}-$$-3;
+T4=${TDIR}/${NAME}-$$-4;
+T5=${TDIR}/${NAME}-$$-5;
+T6=${TDIR}/${NAME}-$$-6;
+T7=${TDIR}/${NAME}-$$-7;
+T8=${TDIR}/${NAME}-$$-8;
+T9=${TDIR}/${NAME}-$$-9;
+TMPS="${T0} ${T1} ${T2} ${T3} ${T4} ${T5} ${T6} ${T7} ${T8} ${T9}";
+
+
+# create helper functions for the "trap" command
+function RmTmps { # usage: RmTmps - will clear all the tmp files
+    /bin/rm -f ${T0} ${T1} ${T2} ${T3} ${T4} ${T5} ${T6} ${T7} ${T8} ${T9}
+}
+
+# this function will clean up temp files then exit
+function Exit { # usage: Exit N (N defaults to zero (0))
+    __evalue=${?}; # grab the most recent exit status
+    RmTmps;
+    if   (( ${#} ==  0  )); then
+            exit ${__evalue};
+    else
+            exit ${1};
+    fi
+}
+
+trap "Exit 2" 1 2 15; # exit if hit with HUP, INT or TERM signals, you can extend this list
+
+# if no args are given, echo usage and exit
+if (( ${#} == 0)); then set -- --help; fi;
+
+while [ ${#} -gt 0 ]; do
+
+    case ${1} in
+        --help    | -h) echo "${USAGE}"; exit 0;;
+        --quiet   | -q) LOUD=${Q};;
+        --verbose | -v) LOUD=${V};;
+        --silent  | -s) LOUD=${S};;
+        --clean   | -c) CLEAN=1;;
+        --dirty   | -d) CLEAN=0;;
+
+      ## alternative for command line file, if files are not accepted
+        *)  # provide an error/abort for unrecognized arguments
+            (
+                echo "";
+                echo "${NAME}: unknown argument: \"${1}\", aborting!";
+                echo "";
+            ) 1>&2;
+            Exit 1;;
+    esac;
+
+    shift; # remove the positional parameter that was just processed
+
+done;
+
+if (( CLEAN < 0 )); then let CLEAN=${DEF_CLEAN} || true; fi;
+if (( LOUD < 0 )); then let LOUD=${DEF_LOUD} || true; fi;
+if (( $(id --user) != 0 )); then
+    (
+        echo "${NAME}: you must be root to run this script";
+        echo "${NAME}: ABORTING!";
+    ) 1>&2;
+    Exit 1;
+fi;
+
+if (( LOUD > ${S} )); then echo cd "${DIRE}" 1>&2; fi;
+cd "${DIRE}" || exit 1;
+
+   let MUST_UNINSTALL=0 || true;
+export MUST_UNINSTALL;
+(
+   IFS=":${IFS}"; # add colon to IFS
+   for path in ${PATH}; do
+       if [[ "${path}" != "." ]]; then
+           if [[ -e "${path}/devops-menu" ]]; then
+               let MUST_UNINSTALL=1 || true;
+               break;
+           fi;
+       fi;
+   done
+   echo "MUST_UNINSTALL=${MUST_UNINSTALL};";
+) > ${T0} || Exit 1;
+
+source ${T0} || {
+    (
+        echo "${NAME}: failed to source ${T0}";
+        /bin/cat ${T0};
+        echo "${NAME}: ${T0} shown on above line(s)";
+    ) 1>&2;
+    Exit 1;
+}
+
+let Ustat=0 || true; # uninstall exit status
+if (( MUST_UNINSTALL )); then
+    if (( LOUD > ${S} )); then echo pip uninstall devops-menu 1>&2; fi;
+    if   (( LOUD == ${S} )); then 
+        echo y | pip uninstall devops-menu >/dev/null 2>&1;
+        let Ustat=${?} || true;
+    elif (( LOUD == ${Q} )); then
+        echo y | pip uninstall devops-menu >/dev/null;
+        let Ustat=${?} || true;
+    else
+        echo y | pip uninstall devops-menu;
+        let Ustat=${?} || true;
+    fi;
+fi;
+if (( Ustat )); then Exit ${Ustat}; fi;
+
+
+let Istat=0 || true; # install exit status
+    if (( LOUD > ${S} )); then echo python setup.py install 1>&2; fi;
+    if   (( LOUD == ${S} )); then 
+        python setup.py install >/dev/null 2>&1;
+        let Istat=${?} || true;
+    elif (( LOUD == ${Q} )); then
+        python setup.py install >/dev/null;
+        let Istat=${?} || true;
+    else
+        python setup.py install;
+        let Istat=${?} || true;
+    fi;
+if (( Istat )); then Exit ${Istat}; fi;
+
+if (( CLEAN )); then
+    /bin/rm -rf dist build || Exit 1;
+fi;
+
+Exit ${Istat};
