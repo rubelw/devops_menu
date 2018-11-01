@@ -58,11 +58,11 @@ setup(
     author='Will Rubel',
     maintainer='Will Rubel',
     maintainer_email='willrubel@gmail.com',
-    description='Menu system for Managing AWS Accounts',
+    description='Menu system for Devops',
     long_description=readme(),
     author_email='willrubel@gmail.com',
     license='Apache 2.0 License',
-    keywords='AWS CLI AWSCLI Boto Boto3',
+    keywords='Devops',
     install_requires=required,
     tests_require=[
         'mock == 1.0.1',  # lock version for older version of setuptools
